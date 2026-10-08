@@ -320,7 +320,7 @@ namespace Multiplayer.Compat
                 mult = 0.15f;
             // The original method re-caches once a second. We check every 60 ticks multiplied by tick rate multiplier, so it will end up roughly every second no matter the game speed.
             // Also handle the situation of the game being paused by assuming the multiplier is 0.15 (small value to potentially force re-cache)
-            __result = ___createdTime > 0 && ___createdTime < currentTime + (60 * mult);
+            __result = ___createdTime > 0 && currentTime < ___createdTime + (60 * mult);
             return false;
         }
 
