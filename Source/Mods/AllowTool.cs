@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using Multiplayer.API;
@@ -35,6 +37,10 @@ namespace Multiplayer.Compat
 
         // Designator_SelectSimilar
         private static Type selectSimilarType;
+
+        // HaulUrgentlyCacheHandler
+        private static AccessTools.FieldRef<object, IDictionary> cacheEntriesField;
+        private static readonly IReadOnlyList<Thing> emptyThings = new List<Thing>();
 
         // Override for shift/control key press and visible map rect
         private static bool? shiftHeldState = null;
@@ -146,6 +152,11 @@ namespace Multiplayer.Compat
                 var type = AccessTools.TypeByName("AllowTool.HaulUrgentlyCacheHandler");
                 MpCompat.harmony.Patch(AccessTools.Method(type, "RecacheIfNeeded"),
                     prefix: new HarmonyMethod(typeof(AllowTool), nameof(DeterministicallyHandleReCaching)));
+                // Entries are only created by the simulation, so reading one from the interface (FixedUpdate) may find none.
+                cacheEntriesField = AccessTools.FieldRefAccess<object, IDictionary>(AccessTools.Field(type, "cacheEntries"));
+                foreach (var method in new[] { "GetDesignatedThingsForMap", "GetDesignatedAndHaulableThingsForMap" })
+                    MpCompat.harmony.Patch(AccessTools.Method(type, method),
+                        prefix: new HarmonyMethod(typeof(AllowTool), nameof(SkipReadingMissingCacheEntry)));
                 type = AccessTools.Inner(type, "ThingsCacheEntry");
                 MpCompat.harmony.Patch(AccessTools.Method(type, "IsValid"),
                     prefix: new HarmonyMethod(typeof(AllowTool), nameof(ScaleReCachingTimerToTickSpeed)));
@@ -308,6 +319,16 @@ namespace Multiplayer.Compat
 
             currentTime = Find.TickManager.TicksGame;
             return true;
+        }
+
+        private static bool SkipReadingMissingCacheEntry(object __instance, Map map, ref IReadOnlyList<Thing> __result)
+        {
+            if (!MP.IsInMultiplayer || !MP.InInterface || cacheEntriesField(__instance).Contains(map))
+                return true;
+
+            // DeterministicallyHandleReCaching doesn't create the entry from the interface, so the original method would throw.
+            __result = emptyThings;
+            return false;
         }
 
         private static bool ScaleReCachingTimerToTickSpeed(float currentTime, float ___createdTime, ref bool __result)
